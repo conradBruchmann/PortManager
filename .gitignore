@@ -1,0 +1,23 @@
+# Rust
+/port_manager/target/
+**/*.rs.bk
+Cargo.lock
+
+# Node.js
+node_modules/
+dist/
+.vite/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Database (optional - uncomment to ignore local DB)
+# ~/.portmanager/
