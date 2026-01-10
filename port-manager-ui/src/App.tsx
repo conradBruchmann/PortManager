@@ -128,7 +128,7 @@ function App() {
                           {lease.service_name}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-500">
-                          {allocated.toLocaleTimeString()}
+                          {allocated.toLocaleString()}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-500">
                           {lease.ttl_seconds}s

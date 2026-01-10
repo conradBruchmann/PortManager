@@ -3,7 +3,7 @@ mod db;
 use axum::{
     body::Body,
     extract::{Path, Query, State, Json},
-    http::{header, StatusCode, Uri},
+    http::{header, StatusCode},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
     Router,
@@ -21,8 +21,6 @@ use tokio::time;
 use tower_http::cors::CorsLayer;
 use chrono::Utc;
 
-const MIN_PORT: u16 = 8000;
-const MAX_PORT: u16 = 9000;
 const DEFAULT_TTL: u64 = 300; // 5 minutes
 
 #[derive(Embed)]
@@ -33,6 +31,8 @@ struct DashboardAssets;
 struct AppState {
     leases: Arc<RwLock<HashMap<u16, Lease>>>,
     db: Arc<Mutex<Connection>>,
+    min_port: u16,
+    max_port: u16,
 }
 
 #[tokio::main]
@@ -62,9 +62,24 @@ async fn main() {
         Err(e) => eprintln!("Failed to cleanup expired leases on startup: {}", e),
     }
 
+    // Read configuration from environment
+    let min_port: u16 = std::env::var("PM_PORT_MIN")
+        .unwrap_or_else(|_| "8000".to_string())
+        .parse()
+        .expect("PM_PORT_MIN must be a valid port number");
+
+    let max_port: u16 = std::env::var("PM_PORT_MAX")
+        .unwrap_or_else(|_| "9000".to_string())
+        .parse()
+        .expect("PM_PORT_MAX must be a valid port number");
+
+    println!("Port Range Configuration: {}-{}", min_port, max_port);
+
     let state = AppState {
         leases: Arc::new(RwLock::new(existing_leases)),
         db: Arc::new(Mutex::new(conn)),
+        min_port,
+        max_port,
     };
 
     // Background cleaner
@@ -162,7 +177,7 @@ async fn allocate_port(
 
     // Find free port
     let mut selected_port = None;
-    for port in MIN_PORT..=MAX_PORT {
+    for port in state.min_port..=state.max_port {
         if !leases.contains_key(&port) {
             selected_port = Some(port);
             break;

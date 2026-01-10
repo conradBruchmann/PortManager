@@ -274,6 +274,8 @@ Cleanup: Every 10 seconds, expired leases are removed
 | Cleanup Interval | 10s | How often expired leases are removed |
 | Database | `~/.portmanager/leases.db` | SQLite storage location |
 | Listen Address | `127.0.0.1:3030` | Daemon bind address |
+| `PM_PORT_MIN` | `8000` | Start of port range (Environment Variable) |
+| `PM_PORT_MAX` | `9000` | End of port range (Environment Variable) |
 
 ---
 
@@ -316,7 +318,7 @@ portctl release <port>
 - [ ] Homebrew formula
 - [ ] Linux systemd service
 - [ ] WebSocket for real-time dashboard
-- [ ] Port range configuration
+- [x] Port range configuration
 - [ ] Multi-user namespaces
 
 ---
