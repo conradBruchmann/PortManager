@@ -6,258 +6,340 @@
 [![Rust](https://img.shields.io/badge/built_with-Rust-orange)](https://www.rust-lang.org)
 [![Status](https://img.shields.io/badge/status-alpha-yellow)]()
 
-PortManager is a lightweight, system-wide daemon that manages local TCP ports. It acts as a central authority for port allocation, preventing conflicts in complex microservice architectures and keeping your localhost development environment sane.
+PortManager is a lightweight daemon that manages local TCP ports. It acts as a central authority for port allocation, preventing conflicts when running multiple services locally.
+
+**One binary. One port. API + Dashboard included.**
+
+![Dashboard](docs/dashboard.png)
 
 ---
 
 ## Quick Start
 
 ```bash
-# Terminal 1: Start the daemon
-cd port_manager && cargo run -p daemon
+# Install via Homebrew (macOS)
+brew install bruchmann-tec/tap/portmanager
 
-# Terminal 2: Run your app with automatic port allocation
-cargo run -p client -- run my-api -- npm start
-# → Allocated port 8000, injected as $PORT, released on exit
+# Run any command with automatic port allocation
+portctl run my-api -- npm start
+# → Allocated port 8000, sets $PORT, releases on exit
+
+# See what's running
+portctl list
+
+# Open Dashboard
+open http://localhost:3030
 ```
 
 ---
 
-## Why PortManager?
+## The Problem
 
-In the era of microservices, AI agents, and local dev-stacks, assigning static ports (e.g., `8080`, `3000`) leads to "Address already in use" errors and configuration hell.
+You're running 5 microservices, 2 AI agents, a database, and a frontend locally. Each needs a port. You edit `.env` files, restart services, get "Address already in use" errors, and waste 20 minutes figuring out who's using port 3000.
 
-### The "Port Binding" Spectrum
+**PortManager fixes this.**
 
-| Solution | Scope | Best For | The Problem |
-|----------|-------|----------|-------------|
-| **Manual / Static** | Hardcoded configs | Simple Monoliths | Conflicts when running >1 project. "Who is using Port 3000?" |
-| **PortManager** | **Localhost OS** | **Local Dev & Scripts** | **It fills this gap!** Centralized coordination for *all* local processes. |
-| **Docker** | Container Network | Isolated Apps | Great internally, but you still map to Host Ports. PortManager can assign those host ports! |
-| **Kubernetes** | Cluster | Production / Cloud | Overkill for running a simple local script or test suite. |
-
-### When to use what?
-
-- **Use Kubernetes**: When you are orchestrating containers across multiple servers or need production-grade self-healing.
-- **Use PortManager**: When you are a developer running 5 scripts, 3 Docker containers, and a frontend locally, and you just want them to *work* without editing `.env` files every time.
-- **Co-existence**: PortManager can feed Docker!
-  ```bash
-  PORT=$(cargo run -p client -- alloc my-db | tail -1 | awk '{print $3}')
-  docker run -p $PORT:5432 postgres
-  ```
+| Approach | When to Use | Limitation |
+|----------|-------------|------------|
+| **Hardcoded ports** | Solo monolith | Conflicts with multiple projects |
+| **Docker Compose** | Containerized apps | Host port mapping still manual |
+| **Kubernetes** | Production | Overkill for local dev |
+| **PortManager** | **Local development** | **Made for this** |
 
 ---
 
 ## Features
 
-- **Centralized Registry**: One source of truth for "Who runs where?".
-- **Lease Management**: Ports are leased with a TTL (Time-To-Live). If a script crashes, the port is freed automatically.
-- **Persistent Storage**: Leases survive daemon restarts (SQLite backend).
-- **Service Discovery**: Find services by name with the lookup endpoint.
-- **Zero-Integration Wrapper**: Run any command with automatic port injection - no code changes required.
-- **REST API**: Simple JSON API standardizes how tools request ports.
-- **Dashboard**: A clean React UI to visualize your local port usage.
+- **Zero Integration**: `portctl run` injects `$PORT` automatically - no code changes
+- **Service Discovery**: Find any service by name via API or CLI
+- **Persistent Leases**: Survives daemon restarts (SQLite backend)
+- **Auto-Cleanup**: Crashed processes release ports automatically (TTL-based)
+- **Built-in Dashboard**: Visual overview at `localhost:3030`
+- **REST API**: Language-agnostic integration
+- **Single Binary**: ~4MB, no runtime dependencies
 
 ---
 
-## Prerequisites
+## Installation
 
-- **Rust** 1.70+ (install via [rustup.rs](https://rustup.rs))
-- **Node.js** 18+ (only for the dashboard UI)
-- **SQLite** (usually pre-installed on macOS/Linux)
-
----
-
-## Installation & Usage
-
-### 1. Clone and Build
+### macOS (Homebrew)
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/PortManager.git
-cd PortManager/port_manager
+brew install bruchmann-tec/tap/portmanager
+
+# Starts automatically as background service
+# Dashboard: http://localhost:3030
+```
+
+### Manual Installation
+
+```bash
+# Clone and build
+git clone https://github.com/bruchmann-tec/portmanager.git
+cd portmanager/port_manager
 cargo build --release
+
+# Install binaries
+cp target/release/daemon ~/.local/bin/portmanager-daemon
+cp target/release/client ~/.local/bin/portctl
+
+# Start daemon
+portmanager-daemon
 ```
 
-### 2. Start the Daemon
+### Run as Background Service (macOS)
 
 ```bash
-cargo run -p daemon
-# Using database: ~/.portmanager/leases.db
-# Listening on localhost:3030
+# Create LaunchAgent for auto-start
+cat > ~/Library/LaunchAgents/com.bruchmann-tec.portmanager.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bruchmann-tec.portmanager</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/YOUR_USERNAME/.local/bin/portmanager-daemon</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+EOF
+
+# Load and start
+launchctl load ~/Library/LaunchAgents/com.bruchmann-tec.portmanager.plist
 ```
 
-### 3. Client CLI
+---
 
-#### Run a command with automatic port injection (recommended)
+## Usage
+
+### The Recommended Way: `portctl run`
 
 ```bash
-# Standard usage - injects PORT environment variable
-cargo run -p client -- run my-server -- npm start
-# Allocated port 8001 for service 'my-server'
-# Running: npm ["start"] with PORT=8001
-# ... your server runs with PORT=8001 ...
-# Released port 8001
+# Basic usage - injects PORT environment variable
+portctl run my-api -- npm start
 
-# Custom environment variable name
-cargo run -p client -- run my-db --env-name DB_PORT -- ./start-db.sh
+# Custom environment variable
+portctl run my-db --env-name DATABASE_PORT -- ./start-postgres.sh
 
-# With custom TTL (10 minutes)
-cargo run -p client -- run my-service --ttl 600 -- python server.py
+# Custom TTL (10 minutes instead of default 5)
+portctl run my-service --ttl 600 -- python server.py
 ```
 
-The `run` command is the **recommended way** to use PortManager - it requires zero changes to your application code. As long as your app reads the `PORT` environment variable (which most frameworks do by default), it just works.
+Your app just needs to read `process.env.PORT` (Node), `os.environ['PORT']` (Python), or `std::env::var("PORT")` (Rust). Most frameworks do this by default.
 
-#### Other commands
+### Other Commands
 
 ```bash
-# Allocate a port manually
-cargo run -p client -- alloc my-fast-api
-# Allocated port: 8001
+# Manual allocation
+portctl alloc my-service
+# → Allocated port: 8000
 
-# List all leases
-cargo run -p client -- list
-# Port: 8001, Service: my-fast-api, TTL: 300s
+# List all active leases
+portctl list
+# → Port: 8000, Service: my-service, TTL: 300s
 
-# Release a port
-cargo run -p client -- release 8001
-# Released port: 8001
+# Find a service
+portctl lookup my-service
+# → 8000
 
-# Lookup a service (Service Discovery)
-cargo run -p client -- lookup my-backend
-# 8001
+# Release manually
+portctl release 8000
 ```
 
-### 4. Dashboard (Optional)
+### Dashboard
 
-```bash
-cd port-manager-ui
-npm install
-npm run dev
-# Open http://localhost:5173
-```
+Open **http://localhost:3030** in your browser.
 
-<!-- TODO: Add screenshot here -->
-<!-- ![Dashboard Screenshot](docs/dashboard.png) -->
+The dashboard shows all active port allocations in real-time.
 
 ---
 
 ## API Reference
 
-### Endpoints
+All endpoints are available at `http://localhost:3030`.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/alloc` | Allocate a new port |
-| `POST` | `/release` | Release an allocated port |
-| `POST` | `/heartbeat` | Renew a lease (prevent expiration) |
-| `GET` | `/list` | List all active leases |
-| `GET` | `/lookup?service=<name>` | Find port(s) by service name |
+| `POST` | `/alloc` | Allocate a port |
+| `POST` | `/release` | Release a port |
+| `POST` | `/heartbeat` | Renew lease TTL |
+| `GET` | `/list` | List all leases |
+| `GET` | `/lookup?service=<name>` | Find port by service name |
+| `GET` | `/` | Dashboard UI |
 
-### Examples
-
-#### Allocate a port
+### Example: Allocate via curl
 
 ```bash
 curl -X POST http://localhost:3030/alloc \
   -H "Content-Type: application/json" \
   -d '{"service_name": "my-api", "ttl_seconds": 300}'
 
-# Response:
-# {"port": 8000, "lease": {"port": 8000, "service_name": "my-api", ...}}
+# {"port":8000,"lease":{"port":8000,"service_name":"my-api",...}}
 ```
 
-#### Lookup a service
+### Example: Service Discovery
 
 ```bash
-curl "http://localhost:3030/lookup?service=my-api"
+# Start backend
+portctl run backend -- node server.js &
 
-# Response:
-# {"service_name": "my-api", "port": 8000, "all_ports": [8000], "lease": {...}}
-```
-
-#### Service Discovery in scripts
-
-```bash
-# Start your backend
-cargo run -p client -- run backend -- node server.js &
-
-# In another script, find the backend port dynamically
-BACKEND_PORT=$(cargo run -p client -- lookup backend)
-curl "http://localhost:$BACKEND_PORT/api/health"
+# Frontend finds backend dynamically
+BACKEND=$(portctl lookup backend)
+curl http://localhost:$BACKEND/api/health
 ```
 
 ---
 
 ## Integration Examples
 
-### With Docker
+### Docker
 
 ```bash
-# Allocate a port and start a container
-cargo run -p client -- run my-postgres -- docker run -p \$PORT:5432 postgres
+# PortManager assigns the host port
+portctl run my-redis -- docker run -p $PORT:6379 redis
 ```
 
-### In Python
+### Python (Flask/FastAPI)
 
 ```python
 import os
-port = os.environ.get('PORT', 8080)
-# Run with: cargo run -p client -- run my-python-app -- python app.py
+port = int(os.environ.get('PORT', 8080))
+app.run(port=port)
 ```
 
-### In Node.js
+```bash
+portctl run my-flask -- python app.py
+```
+
+### Node.js (Express)
 
 ```javascript
 const port = process.env.PORT || 3000;
-// Run with: cargo run -p client -- run my-node-app -- node server.js
+app.listen(port);
+```
+
+```bash
+portctl run my-express -- node server.js
+```
+
+### Rust (Axum/Actix)
+
+```rust
+let port: u16 = std::env::var("PORT")
+    .unwrap_or("8080".into())
+    .parse()
+    .unwrap();
+```
+
+```bash
+portctl run my-rust -- cargo run
 ```
 
 ---
 
-## Architecture
+## How It Works
 
 ```
-~/.portmanager/
-  leases.db          # SQLite database (persistent storage)
+┌─────────────────────────────────────────────────────────┐
+│                    PortManager Daemon                   │
+│                   localhost:3030                        │
+├─────────────────────────────────────────────────────────┤
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌───────────┐  │
+│  │  /alloc │  │ /release│  │  /list  │  │ Dashboard │  │
+│  └─────────┘  └─────────┘  └─────────┘  └───────────┘  │
+├─────────────────────────────────────────────────────────┤
+│                   SQLite Storage                        │
+│              ~/.portmanager/leases.db                   │
+└─────────────────────────────────────────────────────────┘
 
-localhost:3030       # Daemon REST API
-  /alloc             # Allocate ports (8000-9000 range)
-  /release           # Release ports
-  /heartbeat         # Keep leases alive
-  /list              # List all leases
-  /lookup            # Service discovery
+Port Range: 8000-9000 (1000 ports available)
+Default TTL: 300 seconds (5 minutes)
+Cleanup: Every 10 seconds, expired leases are removed
+```
+
+---
+
+## Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Port Range | 8000-9000 | Available ports for allocation |
+| Default TTL | 300s | Lease duration if not specified |
+| Cleanup Interval | 10s | How often expired leases are removed |
+| Database | `~/.portmanager/leases.db` | SQLite storage location |
+| Listen Address | `127.0.0.1:3030` | Daemon bind address |
+
+---
+
+## Troubleshooting
+
+### "Connection refused" when running portctl
+
+The daemon isn't running. Start it:
+```bash
+portmanager-daemon
+# or via launchctl
+launchctl start com.bruchmann-tec.portmanager
+```
+
+### "Address already in use" on port 3030
+
+Another process is using the daemon port:
+```bash
+lsof -i :3030
+kill <PID>
+```
+
+### Ports not being released
+
+Check if the process crashed without cleanup. List and manually release:
+```bash
+portctl list
+portctl release <port>
 ```
 
 ---
 
 ## Roadmap
 
-- [ ] Homebrew / apt package for easier installation
-- [ ] `portctl` binary alias for shorter commands
-- [ ] WebSocket support for real-time dashboard updates
-- [ ] Multi-user support with namespaces
+- [x] SQLite persistence
+- [x] Service discovery (`/lookup`)
+- [x] Zero-integration wrapper (`portctl run`)
+- [x] Embedded dashboard
+- [x] LaunchAgent support (macOS)
+- [ ] Homebrew formula
+- [ ] Linux systemd service
+- [ ] WebSocket for real-time dashboard
+- [ ] Port range configuration
+- [ ] Multi-user namespaces
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions welcome! Please open an issue first to discuss what you'd like to change.
 
 ---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-## Contact & Support
+## About
 
-**BRUCHMANN[TEC] INNOVATION GMBH**
+**PortManager** is developed by [BRUCHMANN\[TEC\] INNOVATION GMBH](https://bruchmann-tec.com).
 
-- **Web**: [bruchmann-tec.com](https://bruchmann-tec.com)
-- **Email**: conrad@bruchmann-tec.com
+- Web: [bruchmann-tec.com](https://bruchmann-tec.com)
+- Email: conrad@bruchmann-tec.com
 
 ---
 
-*Built with Rust and React.*
+*Built with Rust. No JavaScript required to run.*
