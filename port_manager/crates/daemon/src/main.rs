@@ -44,6 +44,16 @@ async fn main() {
     if lease_count > 0 {
         println!("Loaded {} existing lease(s) from database", lease_count);
     }
+    
+    // Clean up expired leases immediately
+    match db::delete_expired(&conn, Utc::now()) {
+        Ok(expired) => {
+            if !expired.is_empty() {
+                println!("Cleaned up {} expired lease(s) on startup", expired.len());
+            }
+        },
+        Err(e) => eprintln!("Failed to cleanup expired leases on startup: {}", e),
+    }
 
     let state = AppState {
         leases: Arc::new(RwLock::new(existing_leases)),
