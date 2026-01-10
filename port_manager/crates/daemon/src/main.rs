@@ -1,12 +1,15 @@
 mod db;
 
 use axum::{
-    extract::{Query, State, Json},
+    body::Body,
+    extract::{Path, Query, State, Json},
+    http::{header, StatusCode, Uri},
+    response::{Html, IntoResponse, Response},
     routing::{get, post},
     Router,
-    http::StatusCode,
 };
 use common::{AllocateRequest, AllocateResponse, ReleaseRequest, HeartbeatRequest, Lease, LookupResponse};
+use rust_embed::Embed;
 use rusqlite::Connection;
 use std::{
     collections::HashMap,
@@ -21,6 +24,10 @@ use chrono::Utc;
 const MIN_PORT: u16 = 8000;
 const MAX_PORT: u16 = 9000;
 const DEFAULT_TTL: u64 = 300; // 5 minutes
+
+#[derive(Embed)]
+#[folder = "dashboard/"]
+struct DashboardAssets;
 
 #[derive(Clone)]
 struct AppState {
@@ -44,7 +51,7 @@ async fn main() {
     if lease_count > 0 {
         println!("Loaded {} existing lease(s) from database", lease_count);
     }
-    
+
     // Clean up expired leases immediately
     match db::delete_expired(&conn, Utc::now()) {
         Ok(expired) => {
@@ -95,19 +102,56 @@ async fn main() {
         }
     });
 
-    let app = Router::new()
+    // API routes
+    let api_routes = Router::new()
         .route("/alloc", post(allocate_port))
         .route("/release", post(release_port))
         .route("/heartbeat", post(heartbeat))
         .route("/list", get(list_leases))
         .route("/lookup", get(lookup_service))
-        .layer(CorsLayer::permissive())
         .with_state(state);
 
+    // Main app: API + Dashboard
+    let app = Router::new()
+        .merge(api_routes)
+        .route("/", get(index_handler))
+        .route("/assets/{*path}", get(static_handler))
+        .fallback(get(index_handler))  // SPA fallback
+        .layer(CorsLayer::permissive());
+
     let addr = SocketAddr::from(([127, 0, 0, 1], 3030));
-    println!("Listening on {}", addr);
+    println!("Listening on http://{}", addr);
+    println!("Dashboard available at http://{}/", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+// Serve index.html
+async fn index_handler() -> impl IntoResponse {
+    match DashboardAssets::get("index.html") {
+        Some(content) => Html(content.data.into_owned()).into_response(),
+        None => (StatusCode::NOT_FOUND, "Dashboard not found").into_response(),
+    }
+}
+
+// Serve static assets (JS, CSS, images)
+async fn static_handler(Path(path): Path<String>) -> impl IntoResponse {
+    let path = format!("assets/{}", path);
+
+    match DashboardAssets::get(&path) {
+        Some(content) => {
+            let mime = mime_guess::from_path(&path).first_or_octet_stream();
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, mime.as_ref())
+                .body(Body::from(content.data.into_owned()))
+                .unwrap()
+        }
+        None => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("Not found"))
+            .unwrap(),
+    }
 }
 
 async fn allocate_port(
