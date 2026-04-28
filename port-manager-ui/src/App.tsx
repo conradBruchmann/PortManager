@@ -3,7 +3,12 @@ import axios from 'axios';
 import type { Lease } from './types';
 import { Network, Plus, Trash2, RefreshCw } from 'lucide-react';
 
-const API_URL = 'http://localhost:3030';
+// Same-origin: das Dashboard wird vom Daemon embedded ausgeliefert,
+// alle API-Calls gehen also gegen den gleichen Host:Port wie das HTML.
+// Damit ist die UI port-agnostisch — sie läuft korrekt egal ob der
+// Daemon auf 7878 (Default), 3030 (Legacy-Override) oder einem anderen
+// Port via PM_DASHBOARD_PORT lauscht.
+const API_URL = '';
 
 function App() {
   const [leases, setLeases] = useState<Lease[]>([]);

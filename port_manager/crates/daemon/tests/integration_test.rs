@@ -1,15 +1,26 @@
 use common::{AllocateRequest, AllocateResponse, ReleaseRequest};
 use reqwest::Client;
-use std::time::Duration;
-use tokio::time::sleep;
 
-const BASE_URL: &str = "http://localhost:3030";
+// Liest aus ENV (`PM_DASHBOARD_PORT`), Default 7878 — analog zum Daemon
+// und Client. Ein laufender Daemon mit nicht-Default-Port ist damit auch
+// aus Tests adressierbar, ohne den Test-Code zu patchen.
+fn base_url() -> String {
+    let port = std::env::var("PM_DASHBOARD_PORT").unwrap_or_else(|_| "7878".to_string());
+    format!("http://localhost:{port}")
+}
 
-// Note: Ensure the daemon is running before running this test, 
-// or implement a spawning mechanism directly in the test setup.
-// For simplicity in this environment, this test acts as a client integration test.
+// Dieser Test braucht einen laufenden Daemon auf `PM_DASHBOARD_PORT`
+// (Default 7878). Default `cargo test` würde sonst panic-en, weil die
+// erste Allocate-Request via `.expect()` failt — daher `#[ignore]`.
+//
+// Manuell ausführen, sobald ein Daemon läuft:
+//   brew services start portmanager
+//   cargo test --test integration_test -- --ignored
+//
+// Mittelfristig: Daemon im Test-Setup spawnen + auf STDOUT-Probe warten.
 
 #[tokio::test]
+#[ignore = "braucht laufenden PortManager-Daemon — manuell mit --ignored"]
 async fn test_full_lifecycle() {
     let client = Client::new();
 
@@ -20,7 +31,7 @@ async fn test_full_lifecycle() {
         tags: Some(vec!["test".to_string()]),
     };
 
-    let resp = client.post(format!("{}/alloc", BASE_URL))
+    let resp = client.post(format!("{}/alloc", base_url()))
         .json(&alloc_req)
         .send()
         .await
@@ -38,7 +49,7 @@ async fn test_full_lifecycle() {
     println!("Allocated port: {}", alloc_resp.port);
 
     // 2. Verify List
-    let list_resp = client.get(format!("{}/list", BASE_URL))
+    let list_resp = client.get(format!("{}/list", base_url()))
         .send()
         .await
         .expect("Failed to get list");
@@ -47,7 +58,7 @@ async fn test_full_lifecycle() {
 
     // 3. Release
     let release_req = ReleaseRequest { port: alloc_resp.port };
-    let rel_resp = client.post(format!("{}/release", BASE_URL))
+    let rel_resp = client.post(format!("{}/release", base_url()))
         .json(&release_req)
         .send()
         .await

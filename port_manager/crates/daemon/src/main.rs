@@ -134,7 +134,16 @@ async fn main() {
         .fallback(get(index_handler))  // SPA fallback
         .layer(CorsLayer::permissive());
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3030));
+    // Dashboard-Port aus ENV; Default 7878. Vorher hartkodiert auf 3030 —
+    // das kollidierte mit Web-Backends, die 3030 als beliebten Default
+    // nutzen (z. B. Steroids2026), was paradox war: ein Port-Manager,
+    // der selbst einen häufig genutzten Port belegte. 7878 ist mid-range
+    // und in der Praxis konfliktarm.
+    let dashboard_port: u16 = std::env::var("PM_DASHBOARD_PORT")
+        .unwrap_or_else(|_| "7878".to_string())
+        .parse()
+        .expect("PM_DASHBOARD_PORT must be a valid port number");
+    let addr = SocketAddr::from(([127, 0, 0, 1], dashboard_port));
     println!("Listening on http://{}", addr);
     println!("Dashboard available at http://{}/", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();

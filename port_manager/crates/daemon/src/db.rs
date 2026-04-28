@@ -66,10 +66,8 @@ pub fn load_leases(conn: &Connection) -> Result<HashMap<u16, Lease>> {
     })?;
 
     let mut map = HashMap::new();
-    for lease_result in lease_iter {
-        if let Ok(lease) = lease_result {
-            map.insert(lease.port, lease);
-        }
+    for lease in lease_iter.flatten() {
+        map.insert(lease.port, lease);
     }
     Ok(map)
 }

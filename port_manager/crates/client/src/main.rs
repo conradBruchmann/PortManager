@@ -57,12 +57,26 @@ enum Commands {
     },
 }
 
-const BASE_URL: &str = "http://localhost:3030";
+/// Liest die Daemon-URL aus ENV. Reihenfolge:
+/// 1. `PM_DAEMON_URL` (komplette URL, höchste Priorität)
+/// 2. `PM_DASHBOARD_PORT` (nur Port, baut `http://localhost:<port>`) —
+///    symmetrisch zur Daemon-Variable, damit ein einziger Switch beide Seiten kippt
+/// 3. Default `http://localhost:7878`
+fn base_url() -> String {
+    if let Ok(url) = std::env::var("PM_DAEMON_URL") {
+        if !url.is_empty() {
+            return url;
+        }
+    }
+    let port = std::env::var("PM_DASHBOARD_PORT").unwrap_or_else(|_| "7878".to_string());
+    format!("http://localhost:{port}")
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let client = Client::new();
+    let base_url = base_url();
 
     match cli.command {
         Commands::Alloc { service_name, ttl } => {
@@ -71,7 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ttl_seconds: ttl,
                 tags: None,
             };
-            let resp = client.post(format!("{}/alloc", BASE_URL))
+            let resp = client.post(format!("{}/alloc", base_url))
                 .json(&req)
                 .send()
                 .await?;
@@ -86,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Release { port } => {
             let req = ReleaseRequest { port };
-            let resp = client.post(format!("{}/release", BASE_URL))
+            let resp = client.post(format!("{}/release", base_url))
                 .json(&req)
                 .send()
                 .await?;
@@ -98,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::List => {
-            let resp = client.get(format!("{}/list", BASE_URL))
+            let resp = client.get(format!("{}/list", base_url))
                 .send()
                 .await?;
 
@@ -118,7 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ttl_seconds: ttl,
                 tags: None,
             };
-            let resp = client.post(format!("{}/alloc", BASE_URL))
+            let resp = client.post(format!("{}/alloc", base_url))
                 .json(&req)
                 .send()
                 .await?;
@@ -132,7 +146,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 loop {
                     interval.tick().await;
                     let hb_req = HeartbeatRequest { port };
-                    match client.post(format!("{}/heartbeat", BASE_URL)).json(&hb_req).send().await {
+                    match client.post(format!("{}/heartbeat", base_url)).json(&hb_req).send().await {
                         Ok(r) if r.status().is_success() => println!("Heartbeat sent for {}", port),
                         Ok(r) => {
                             eprintln!("Heartbeat failed: {}", r.status());
@@ -149,7 +163,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Lookup { service_name } => {
-            let resp = client.get(format!("{}/lookup?service={}", BASE_URL, service_name))
+            let resp = client.get(format!("{}/lookup?service={}", base_url, service_name))
                 .send()
                 .await?;
 
@@ -178,7 +192,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ttl_seconds: ttl,
                 tags: None,
             };
-            let resp = client.post(format!("{}/alloc", BASE_URL))
+            let resp = client.post(format!("{}/alloc", base_url))
                 .json(&req)
                 .send()
                 .await?;
@@ -198,6 +212,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Spawn heartbeat task
             let heartbeat_client = client.clone();
+            let heartbeat_base_url = base_url.clone();
             let heartbeat_handle = tokio::spawn(async move {
                 let mut interval = time::interval(Duration::from_secs(5));
                 while running_clone.load(Ordering::SeqCst) {
@@ -206,7 +221,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         break;
                     }
                     let hb_req = HeartbeatRequest { port };
-                    match heartbeat_client.post(format!("{}/heartbeat", BASE_URL))
+                    match heartbeat_client.post(format!("{}/heartbeat", heartbeat_base_url))
                         .json(&hb_req)
                         .send()
                         .await
@@ -244,7 +259,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Release port
             let rel_req = ReleaseRequest { port };
-            let _ = client.post(format!("{}/release", BASE_URL))
+            let _ = client.post(format!("{}/release", base_url))
                 .json(&rel_req)
                 .send()
                 .await;

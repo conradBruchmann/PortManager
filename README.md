@@ -28,7 +28,7 @@ portctl run my-api -- npm start
 portctl list
 
 # Open Dashboard
-open http://localhost:3030
+open http://localhost:7878
 ```
 
 ---
@@ -54,7 +54,7 @@ You're running 5 microservices, 2 AI agents, a database, and a frontend locally.
 - **Service Discovery**: Find any service by name via API or CLI
 - **Persistent Leases**: Survives daemon restarts (SQLite backend)
 - **Auto-Cleanup**: Crashed processes release ports automatically (TTL-based)
-- **Built-in Dashboard**: Visual overview at `localhost:3030`
+- **Built-in Dashboard**: Visual overview at `localhost:7878`
 - **REST API**: Language-agnostic integration
 - **Single Binary**: ~4MB, no runtime dependencies
 
@@ -68,7 +68,7 @@ You're running 5 microservices, 2 AI agents, a database, and a frontend locally.
 brew install bruchmann-tec/tap/portmanager
 
 # Starts automatically as background service
-# Dashboard: http://localhost:3030
+# Dashboard: http://localhost:7878
 ```
 
 ### Manual Installation
@@ -154,7 +154,7 @@ portctl release 8000
 
 ### Dashboard
 
-Open **http://localhost:3030** in your browser.
+Open **http://localhost:7878** in your browser.
 
 The dashboard shows all active port allocations in real-time.
 
@@ -162,7 +162,7 @@ The dashboard shows all active port allocations in real-time.
 
 ## API Reference
 
-All endpoints are available at `http://localhost:3030`.
+All endpoints are available at `http://localhost:7878`.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -176,7 +176,7 @@ All endpoints are available at `http://localhost:3030`.
 ### Example: Allocate via curl
 
 ```bash
-curl -X POST http://localhost:3030/alloc \
+curl -X POST http://localhost:7878/alloc \
   -H "Content-Type: application/json" \
   -d '{"service_name": "my-api", "ttl_seconds": 300}'
 
@@ -248,7 +248,7 @@ portctl run my-rust -- cargo run
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    PortManager Daemon                   │
-│                   localhost:3030                        │
+│                   localhost:7878                        │
 ├─────────────────────────────────────────────────────────┤
 │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌───────────┐  │
 │  │  /alloc │  │ /release│  │  /list  │  │ Dashboard │  │
@@ -273,9 +273,11 @@ Cleanup: Every 10 seconds, expired leases are removed
 | Default TTL | 300s | Lease duration if not specified |
 | Cleanup Interval | 10s | How often expired leases are removed |
 | Database | `~/.portmanager/leases.db` | SQLite storage location |
-| Listen Address | `127.0.0.1:3030` | Daemon bind address |
+| Listen Address | `127.0.0.1:7878` | Daemon bind address |
 | `PM_PORT_MIN` | `8000` | Start of port range (Environment Variable) |
 | `PM_PORT_MAX` | `9000` | End of port range (Environment Variable) |
+| `PM_DASHBOARD_PORT` | `7878` | Dashboard / API listen port — `portctl` liest dieselbe Variable |
+| `PM_DAEMON_URL` | — | Optional, komplette URL für `portctl`. Höchste Priorität, überschreibt `PM_DASHBOARD_PORT` |
 
 ---
 
@@ -290,11 +292,11 @@ portmanager-daemon
 launchctl start com.bruchmann-tec.portmanager
 ```
 
-### "Address already in use" on port 3030
+### "Address already in use" on port 7878
 
 Another process is using the daemon port:
 ```bash
-lsof -i :3030
+lsof -i :7878
 kill <PID>
 ```
 
